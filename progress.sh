@@ -34,6 +34,45 @@ verbosefor5="$(verbosefor 5)"
 
 readonly PROGRESS_CHAR=( '=' '-' '/' '|' '\' )
 
+function progress_percent_prepare ()
+#   Prepare percentage indicator for progress bar.
+{
+  [[ -n "$OPT_NO_PROGRESS_PERCENT" ]] && return
+  if [[ -n "$PROGRESS_PERCENT_PID" ]]; then
+    error "Already set PROGRESS_PERCENT_PID: $PROGRESS_PERCENT_PID"
+    return 1
+  fi
+  
+  local fifo n=0 total="$PROGRESS_TOTAL"
+  
+  mkfifo /tmp/progress.$$
+  
+  while true; do
+    fifo="$(</tmp/progress.$$)"
+    let n++
+    printf "\e[55G%3d%%" $(( 100 * n / total )) >"$verbosefor0"
+    (( total <= n )) && exit
+  done &
+  PROGRESS_PERCENT_PID=$!
+}
+
+function progress_percent_update ()
+#   Cleanup percentage indicator for progress bar.
+{
+  [[ -n "$OPT_NO_PROGRESS_PERCENT" ]] && return
+  echo -n > /tmp/progress.$$
+}
+
+function progress_percent_cleanup ()
+#   Update percentage indicator for progress bar.
+{
+  if [[ -n "$PROGRESS_PERCENT_PID" ]]; then
+    wait "$PROGRESS_PERCENT_PID"
+    unset PROGRESS_PERCENT_PID
+  fi
+  rm -r /tmp/progress.$$
+}
+
 function progress_init () # [<total=100>]
 #   Initialize progress bar.
 {
@@ -49,6 +88,8 @@ function progress_init () # [<total=100>]
   echo -ne "|...................................................|\r" >"$verbosefor0"
   #          0         1         2         3         4         5
   #          012345678901234567890123456789012345678901234567890
+  
+  progress_percent_prepare
 }
 
 function progress_update () # <current>
@@ -58,6 +99,8 @@ function progress_update () # <current>
   local n="$PROGRESS_TOTAL"
   local p=$((2 + 50 * ($1    ) / n))
   local q=$((2 + 50 * ($1 + 1) / n))
+  
+  progress_percent_update
   
   if (( q - p <= 1 )); then
     printf "\e[%dG%s" $p "${PROGRESS_CHAR[($1 % 4 + 1) * (1 + $p - $q)]}"
@@ -73,6 +116,9 @@ function progress_finish ()
 #   Finish progress bar.
 {
   [ -n "$OPT_NO_PROGRESS" ] && return
+  
+  progress_percent_cleanup
+  
   echo -e "\r|===================================================|" >"$verbosefor0"
   #           0         1         2         3         4         5
   #           012345678901234567890123456789012345678901234567890
@@ -111,6 +157,11 @@ function optparse_progress ()
     #   Hide scale for progress.
     nparams 0
     optset NO_PROGRESS_SCALE "$1"
+    ;;
+  --no-progress-percent)
+    #   Hide scale for progress.
+    nparams 0
+    optset NO_PROGRESS_PERCENT "$1"
     ;;
   *) return 1 ;;
   esac
