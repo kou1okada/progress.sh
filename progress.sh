@@ -122,9 +122,11 @@ function progress_percent_prepare ()
       (( total < n )) && let n=total
       printf "\e[55G%3d%%" $(( 100 * n / total )) >"$verbosefor0"
       (( total <= n )) && exit
+      [[ -d /proc/$$ ]] || break
     done
     exec 3>&-
     exec 3<&-
+    rm -r /tmp/progress.$$
   } &
   PROGRESS_PERCENT_PID=$!
 }
@@ -139,11 +141,12 @@ function progress_percent_update ()
 function progress_percent_cleanup ()
 #   Update percentage indicator for progress bar.
 {
+  exec 3>&-
+  exec 3<&-
   if [[ -n "$PROGRESS_PERCENT_PID" ]]; then
     wait "$PROGRESS_PERCENT_PID"
     unset PROGRESS_PERCENT_PID
   fi
-  rm -r /tmp/progress.$$
 }
 
 function progress_init () # [<total=100>]
